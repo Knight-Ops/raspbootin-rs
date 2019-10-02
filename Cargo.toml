@@ -1,0 +1,21 @@
+[package]
+name = "raspi-os"
+version = "0.1.0"
+authors = ["Carl Hurd <carl@basilisklabs.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "kernel"
+path = "src/main.rs"
+
+# The features section is used to select the target board.
+[features]
+default = []
+bsp_rpi3 = []
+bsp_rpi4 = []
+
+[dependencies]
+r0 = "0.2"
+cortex-a = "2.7"
+register = "0.3.3"
