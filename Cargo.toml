@@ -19,3 +19,8 @@ bsp_rpi4 = []
 r0 = "0.2"
 cortex-a = "2.7"
 register = "0.3.3"
+spin = "0.5"
+
+[dependencies.lazy_static]
+version = "1.4"
+features = ["spin_no_std"]

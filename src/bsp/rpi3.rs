@@ -15,6 +15,9 @@ use crate::interface::console;
 use core::fmt;
 use cortex_a::{asm, regs::*};
 
+use lazy_static::lazy_static;
+use spin::Mutex;
+
 /// The entry of the `kernel` binary.
 ///
 /// The function must be named `_start`, because the linker is looking for this
@@ -45,6 +48,18 @@ pub unsafe extern "C" fn _start() -> ! {
 ////////////////////////////////////////////////////////////////////////////////
 // Implementation of the kernel's BSP calls
 ////////////////////////////////////////////////////////////////////////////////
+
+lazy_static! {
+    pub static ref CONSOLE: Mutex<Uart> = {
+        let mut uart = Uart::new();
+        let mut mbox = mbox::Mbox::new();
+        {
+            uart.init(&mut mbox, 4_000_000);
+        }
+
+        Mutex::new(uart)
+    };
+}
 
 /// Returns a ready-to-use `console::Write` implementation.
 // This is a terrible implementation, we should have to re-init each time we need this

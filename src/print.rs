@@ -24,5 +24,5 @@ macro_rules! println {
 }
 
 pub fn _print(args: fmt::Arguments) {
-    bsp::console().write_fmt(args).unwrap();
+    bsp::CONSOLE.lock().write_fmt(args).unwrap()
 }

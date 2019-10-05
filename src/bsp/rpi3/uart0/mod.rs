@@ -235,3 +235,17 @@ impl Uart {
         }
     }
 }
+
+impl console::Write for Uart {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.puts(s);
+
+        Ok(())
+    }
+}
+
+impl console::Read for Uart {
+    fn read_char(&mut self) -> char {
+        self.getc()
+    }
+}
