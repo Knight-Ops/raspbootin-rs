@@ -7,30 +7,39 @@ mod bsp;
 
 mod runtime_init;
 
-mod interface;
-mod print;
+use cortex_a::asm;
 
 fn kernel_entry() -> ! {
-    // uart.puts("Hello from pure Rust!\n");
-    println!("Hello from pure Rust!");
-
     let mut mbox = bsp::mbox::Mbox::new();
+    let uart = bsp::Uart::new();
 
-    let macAddr = mbox.get_board_mac().unwrap();
-    println!("Got my MAC : {:X}", macAddr);
-    // // let (clock_id, clock_speed) = mbox
-    // //     .set_clock_rate(bsp::mbox::Clocks::UART, 4_000_000, 0)
-    // //     .unwrap();
+    if uart.init(&mut mbox, 4_000_000).is_err() {
+        asm::wfe();
+    }
 
-    // uart.puts("My MAC is ");
-    // uart.hex((macAddr >> 32) as u32);
-    // uart.hex(macAddr as u32);
-    // uart.puts("\n");
+    for c in "RBIN64\r\n".chars() {
+        uart.send(c);
+    }
 
-    // uart.puts("My UART speed is ");
-    // uart.hex(clock_id);
-    // uart.hex(clock_speed);
-    // uart.puts("\n");
+    uart.send(3 as char);
+    uart.send(3 as char);
+    uart.send(3 as char);
 
-    panic!("Stopping at end of kernel_entry");
+    let mut size: u32 = u32::from(uart.getc());
+    size |= u32::from(uart.getc()) << 8;
+    size |= u32::from(uart.getc()) << 16;
+    size |= u32::from(uart.getc()) << 24;
+
+    uart.send('O');
+    uart.send('K');
+
+    let kernel_addr: *mut u8 = 0x80_000 as *mut u8;
+    unsafe {
+        for i in 0..size {
+            *kernel_addr.offset(i as isize) = uart.getc();
+        }
+    }
+
+    let kernel: extern "C" fn() -> ! = unsafe { core::mem::transmute(kernel_addr as *const ()) };
+    kernel()
 }

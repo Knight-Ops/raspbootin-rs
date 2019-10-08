@@ -1,21 +1,24 @@
+ENTRY(_start)
+
 SECTIONS
 {
     /* Set current address to the value from which the RPi4 starts execution */
-    . = 0x80000;
+    . = 0x80000 - 0x1000;
 
-    .text :
+    __code = .;
+    .text ALIGN(8):
     {
         *(.text._start) *(.text*)
     }
 
-    .rodata :
+    .rodata ALIGN(8) :
     {
-        *(.rodata)
+        *(.rodata .rodata.*) *(.got)
     }
 
-    .data :
+    .data ALIGN(8):
     {
-        *(.data)
+        *(.data .data.*)
     }
 
     /*Align to 8 byte boundary */
@@ -25,6 +28,7 @@ SECTIONS
         *(.bss);
         __bss_end = .;
     }
+    __end = .;
 
     /DISCARD/ : { *(.comment*) }
 }

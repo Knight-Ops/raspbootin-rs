@@ -1,111 +1,113 @@
 use super::gpio;
 use super::mbox::{Clocks, Mbox};
 use super::MMIO_BASE;
-use crate::interface::console;
 use core::fmt;
 use core::ops;
 use cortex_a::asm;
 use register::{mmio::*, register_bitfields};
 
+// PL011 UART registers.
+//
+// Descriptions taken from
+// https://github.com/raspberrypi/documentation/files/1888662/BCM2837-ARM-Peripherals.-.Revised.-.V2-1.pdf
 register_bitfields! {
     u32,
 
-    DR [
-        OE OFFSET(11) NUMBITS(1) [],
-
-        BE OFFSET(10) NUMBITS(1) [],
-
-        PE OFFSET(9) NUMBITS(1) [],
-
-        FE OFFSET(8) NUMBITS(1) [],
-
-        DATA OFFSET(0) NUMBITS(8) []
-    ],
-
-    RSRECR [
-        OE OFFSET(3) NUMBITS(1) [],
-        BE OFFSET(2) NUMBITS(1) [],
-        PE OFFSET(1) NUMBITS(1) [],
-        FE OFFSET(0) NUMBITS(1) []
-    ],
-
+    /// Flag Register
     FR [
-        RI OFFSET(8) NUMBITS(1) [],
-        TXFE OFFSET(7) NUMBITS(1) [],
-        RXFF OFFSET(6) NUMBITS(1) [],
+        /// Transmit FIFO full. The meaning of this bit depends on the
+        /// state of the FEN bit in the UARTLCR_ LCRH Register. If the
+        /// FIFO is disabled, this bit is set when the transmit
+        /// holding register is full. If the FIFO is enabled, the TXFF
+        /// bit is set when the transmit FIFO is full.
         TXFF OFFSET(5) NUMBITS(1) [],
-        RXFE OFFSET(4) NUMBITS(1) [],
-        BUSY OFFSET(3) NUMBITS(1) [],
-        DCD OFFSET(2) NUMBITS(1) [],
-        DSR OFFSET(1) NUMBITS(1) [],
-        CTS OFFSET(0) NUMBITS(1) []
+
+        /// Receive FIFO empty. The meaning of this bit depends on the
+        /// state of the FEN bit in the UARTLCR_H Register. If the
+        /// FIFO is disabled, this bit is set when the receive holding
+        /// register is empty. If the FIFO is enabled, the RXFE bit is
+        /// set when the receive FIFO is empty.
+        RXFE OFFSET(4) NUMBITS(1) []
     ],
 
+    /// Integer Baud rate divisor
     IBRD [
+        /// Integer Baud rate divisor
         IBRD OFFSET(0) NUMBITS(16) []
     ],
 
+    /// Fractional Baud rate divisor
     FBRD [
+        /// Fractional Baud rate divisor
         FBRD OFFSET(0) NUMBITS(6) []
     ],
 
+    /// Line Control register
     LCRH [
-        SPS OFFSET(7) NUMBITS(1) [],
+        /// Word length. These bits indicate the number of data bits
+        /// transmitted or received in a frame.
         WLEN OFFSET(5) NUMBITS(2) [
-            Fivebit = 0b00,
-            Sixbit = 0b01,
-            Sevenbit = 0b10,
-            Eightbit = 0b11
-        ],
-        FEN OFFSET(4) NUMBITS(1) [],
-        STP2 OFFSET(3) NUMBITS(1) [],
-        EPS OFFSET(2) NUMBITS(1) [],
-        PEN OFFSET(1) NUMBITS(1) [],
-        BRK OFFSET(0) NUMBITS(1) []
-    ],
-
-    CR [
-        CTSEN OFFSET(15) NUMBITS(1) [],
-        RTSEN OFFSET(14) NUMBITS(1) [],
-        RTS OFFSET(11) NUMBITS(1) [],
-        RXE OFFSET(9) NUMBITS(1) [
-            Disabled = 0b0,
-            Enabled = 0b1
-        ],
-        TXE OFFSET(8) NUMBITS(1) [
-            Disabled = 0b0,
-            Enabled = 0b1
-        ],
-        LBE OFFSET(7) NUMBITS(1) [],
-        UARTEN OFFSET(0) NUMBITS(1) [
-            Disabled = 0b0,
-            Enabled = 0b1
+            FiveBit = 0b00,
+            SixBit = 0b01,
+            SevenBit = 0b10,
+            EightBit = 0b11
         ]
     ],
 
-    ICR [ // TODO this is wrong
+    /// Control Register
+    CR [
+        /// Receive enable. If this bit is set to 1, the receive
+        /// section of the UART is enabled. Data reception occurs for
+        /// UART signals. When the UART is disabled in the middle of
+        /// reception, it completes the current character before
+        /// stopping.
+        RXE    OFFSET(9) NUMBITS(1) [
+            Disabled = 0,
+            Enabled = 1
+        ],
+
+        /// Transmit enable. If this bit is set to 1, the transmit
+        /// section of the UART is enabled. Data transmission occurs
+        /// for UART signals. When the UART is disabled in the middle
+        /// of transmission, it completes the current character before
+        /// stopping.
+        TXE    OFFSET(8) NUMBITS(1) [
+            Disabled = 0,
+            Enabled = 1
+        ],
+
+        /// UART enable
+        UARTEN OFFSET(0) NUMBITS(1) [
+            /// If the UART is disabled in the middle of transmission
+            /// or reception, it completes the current character
+            /// before stopping.
+            Disabled = 0,
+            Enabled = 1
+        ]
+    ],
+
+    /// Interupt Clear Register
+    ICR [
+        /// Meta field for all pending interrupts
         ALL OFFSET(0) NUMBITS(11) []
     ]
 }
 
 const UART_BASE: u32 = MMIO_BASE + 0x20_1000;
 
-//TODO this needs to be completely filled out
 #[allow(non_snake_case)]
 #[repr(C)]
 pub struct RegisterBlock {
-    DR: ReadWrite<u32, DR::Register>,         // 0x00
-    RSRECR: ReadWrite<u32, RSRECR::Register>, // 0x04
-    _reserved0: [u32; 4],                     // 0x08
-    FR: ReadWrite<u32, FR::Register>,         // 0x18
-    _reserved1: [u32; 1],                     // 0x1c
-    ILPR: ReadWrite<u32>,                     // 0x20
-    IBRD: ReadWrite<u32, IBRD::Register>,     // 0x24
-    FBRD: ReadWrite<u32, FBRD::Register>,     // 0x28
-    LCRH: ReadWrite<u32, LCRH::Register>,     // 0x2c
-    CR: ReadWrite<u32, CR::Register>,         // 0x30
-    _reserved2: [u32; 4],                     //TODO                // 0x34
-    ICR: WriteOnly<u32, ICR::Register>,       // 0x44
+    DR: ReadWrite<u32>,                   // 0x00
+    __reserved_0: [u32; 5],               // 0x04
+    FR: ReadOnly<u32, FR::Register>,      // 0x18
+    __reserved_1: [u32; 2],               // 0x1c
+    IBRD: WriteOnly<u32, IBRD::Register>, // 0x24
+    FBRD: WriteOnly<u32, FBRD::Register>, // 0x28
+    LCRH: WriteOnly<u32, LCRH::Register>, // 0x2C
+    CR: WriteOnly<u32, CR::Register>,     // 0x30
+    __reserved_2: [u32; 4],               // 0x34
+    ICR: WriteOnly<u32, ICR::Register>,   // 0x44
 }
 
 pub enum UartError {
@@ -146,7 +148,7 @@ impl Uart {
                 asm::nop();
             }
 
-            (*gpio::GPPUDCLK0).write(
+            (*gpio::GPPUDCLK0).modify(
                 gpio::GPPUDCLK0::PUDCLK14::AssertClock + gpio::GPPUDCLK0::PUDCLK15::AssertClock,
             );
             for _ in 0..150 {
@@ -157,9 +159,9 @@ impl Uart {
         }
 
         self.ICR.write(ICR::ALL::CLEAR);
-        self.IBRD.write(IBRD::IBRD.val(2));
+        self.IBRD.write(IBRD::IBRD.val(2)); // Results in 115200 baud
         self.FBRD.write(FBRD::FBRD.val(0xB));
-        self.LCRH.write(LCRH::WLEN::Eightbit);
+        self.LCRH.write(LCRH::WLEN::EightBit); // 8N1
         self.CR
             .write(CR::UARTEN::Enabled + CR::TXE::Enabled + CR::RXE::Enabled);
 
@@ -182,7 +184,8 @@ impl Uart {
     }
 
     /// Receive a character
-    pub fn getc(&self) -> char {
+    #[inline(never)]
+    pub fn getc(&self) -> u8 {
         // wait until something is in the buffer
         loop {
             if !self.FR.is_set(FR::RXFE) {
@@ -193,59 +196,6 @@ impl Uart {
         }
 
         // read it and return
-        let mut ret = self.DR.get() as u8 as char;
-
-        // convert carrige return to newline
-        if ret == '\r' {
-            ret = '\n'
-        }
-
-        ret
-    }
-
-    /// Display a string
-    pub fn puts(&self, string: &str) {
-        for c in string.chars() {
-            // convert newline to carrige return + newline
-            if c == '\n' {
-                self.send('\r')
-            }
-
-            self.send(c);
-        }
-    }
-
-    /// Display a binary value in hexadecimal
-    pub fn hex(&self, d: u32) {
-        let mut n;
-
-        for i in 0..8 {
-            // get highest tetrad
-            n = d.wrapping_shr(28 - i * 4) & 0xF;
-
-            // 0-9 => '0'-'9', 10-15 => 'A'-'F'
-            // Add proper offset for ASCII table
-            if n > 9 {
-                n += 0x37;
-            } else {
-                n += 0x30;
-            }
-
-            self.send(n as u8 as char);
-        }
-    }
-}
-
-impl console::Write for Uart {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.puts(s);
-
-        Ok(())
-    }
-}
-
-impl console::Read for Uart {
-    fn read_char(&mut self) -> char {
-        self.getc()
+        self.DR.get() as u8
     }
 }
